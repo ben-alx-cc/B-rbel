@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dove Flight</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #87CEEB 0%, #4682B4 100%);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Global variables
+        let scene, camera, renderer, dove, water, wings, isFlapping = false;
+        let clock = new THREE.Clock();
+        
+        // Flight parameters
+        let baseSpeed = 0.02;
+        let currentSpeed = baseSpeed;
+        let targetSpeed = baseSpeed;
+        let speedTransition = 0.05;
+        
+        // Wing flapping
+        let wingFlapSpeed = 0;
+        let targetWingSpeed = 0;
+        
+        // Initialize the scene
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x87CEEB, 10, 50);
+            
+            // Create camera - bird's eye view, slightly from above
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 8, 10);
+            camera.lookAt(0, 0, 0);
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.setClearColor(0x87CEEB, 1);
+            document.body.appendChild(renderer.domElement);
+            
+            // Create lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            
+            createWater();
+            createDove();
+            setupEventListeners();
+            animate();
+        }
+        
+        function createWater() {
+            // Create water surface
+            const waterGeometry = new THREE.PlaneGeometry(100, 100, 64, 64);
+            const waterMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x006994,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            water = new THREE.Mesh(waterGeometry, waterMaterial);
+            water.rotation.x = -Math.PI / 2;
+            water.position.y = -2;
+            water.receiveShadow = true;
+            scene.add(water);
+            
+            // Store original positions for wave animation
+            const positions = waterGeometry.attributes.position;
+            water.userData.originalPositions = [];
+            for (let i = 0; i < positions.count; i++) {
+                water.userData.originalPositions.push({
+                    x: positions.getX(i),
+                    y: positions.getY(i),
+                    z: positions.getZ(i)
+                });
+            }
+        }
+        
+        function createDove() {
+            dove = new THREE.Group();
+            
+            // Create dove body (oval/elliptical)
+            const bodyGeometry = new THREE.SphereGeometry(0.5, 16, 12);
+            bodyGeometry.scale(1.2, 0.8, 1.8); // Make it more oval
+            const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.castShadow = true;
+            dove.add(body);
+            
+            // Create dove head
+            const headGeometry = new THREE.SphereGeometry(0.25, 12, 8);
+            const headMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.set(0, 0.2, 0.8);
+            head.castShadow = true;
+            dove.add(head);
+            
+            // Create beak
+            const beakGeometry = new THREE.ConeGeometry(0.05, 0.2, 6);
+            const beakMaterial = new THREE.MeshLambertMaterial({ color: 0xff8800 });
+            const beak = new THREE.Mesh(beakGeometry, beakMaterial);
+            beak.position.set(0, 0.15, 1.0);
+            beak.rotation.x = Math.PI / 2;
+            dove.add(beak);
+            
+            // Create wings
+            wings = new THREE.Group();
+            
+            // Left wing
+            const leftWingGeometry = new THREE.BoxGeometry(1.2, 0.1, 0.6);
+            const wingMaterial = new THREE.MeshLambertMaterial({ color: 0xf5f5f5 });
+            const leftWing = new THREE.Mesh(leftWingGeometry, wingMaterial);
+            leftWing.position.set(-0.7, 0, 0);
+            leftWing.castShadow = true;
+            wings.add(leftWing);
+            
+            // Right wing
+            const rightWingGeometry = new THREE.BoxGeometry(1.2, 0.1, 0.6);
+            const rightWing = new THREE.Mesh(rightWingGeometry, wingMaterial);
+            rightWing.position.set(0.7, 0, 0);
+            rightWing.castShadow = true;
+            wings.add(rightWing);
+            
+            wings.userData = { leftWing, rightWing };
+            dove.add(wings);
+            
+            // Position dove
+            dove.position.set(0, 2, 0);
+            dove.rotation.y = Math.PI; // Face forward
+            scene.add(dove);
+        }
+        
+        function setupEventListeners() {
+            // Touch events for mobile
+            document.addEventListener('touchstart', handleTouchStart, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd, { passive: false });
+            
+            // Mouse events for desktop testing
+            document.addEventListener('mousedown', handleTouchStart);
+            document.addEventListener('mouseup', handleTouchEnd);
+            
+            // Prevent default touch behaviors
+            document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+            
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize);
+        }
+        
+        function handleTouchStart(event) {
+            event.preventDefault();
+            isFlapping = true;
+            targetSpeed = baseSpeed * 2.5;
+            targetWingSpeed = 15;
+        }
+        
+        function handleTouchEnd(event) {
+            event.preventDefault();
+            isFlapping = false;
+            targetSpeed = baseSpeed;
+            targetWingSpeed = 0;
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function animateWater() {
+            const time = clock.getElapsedTime();
+            const positions = water.geometry.attributes.position;
+            
+            for (let i = 0; i < positions.count; i++) {
+                const originalPos = water.userData.originalPositions[i];
+                const wave1 = Math.sin(originalPos.x * 0.5 + time * 2) * 0.1;
+                const wave2 = Math.sin(originalPos.y * 0.3 + time * 1.5) * 0.05;
+                positions.setZ(i, originalPos.z + wave1 + wave2);
+            }
+            
+            positions.needsUpdate = true;
+        }
+        
+        function animateDove() {
+            const time = clock.getElapsedTime();
+            
+            // Smooth speed transition
+            currentSpeed += (targetSpeed - currentSpeed) * speedTransition;
+            
+            // Smooth wing speed transition
+            wingFlapSpeed += (targetWingSpeed - wingFlapSpeed) * 0.1;
+            
+            // Move dove forward
+            dove.position.x += Math.sin(dove.rotation.y) * currentSpeed;
+            dove.position.z += Math.cos(dove.rotation.y) * currentSpeed;
+            
+            // Add gentle bobbing motion
+            const bobAmount = isFlapping ? 0.05 : 0.02;
+            const bobSpeed = isFlapping ? 8 : 2;
+            dove.position.y = 2 + Math.sin(time * bobSpeed) * bobAmount;
+            
+            // Wing animation
+            if (isFlapping) {
+                // Active flapping
+                const flapAngle = Math.sin(time * wingFlapSpeed) * 0.8;
+                wings.userData.leftWing.rotation.z = flapAngle;
+                wings.userData.rightWing.rotation.z = -flapAngle;
+            } else {
+                // Gentle gliding motion
+                const glideAngle = Math.sin(time * 3) * 0.1;
+                wings.userData.leftWing.rotation.z = glideAngle;
+                wings.userData.rightWing.rotation.z = -glideAngle;
+            }
+            
+            // Keep dove in bounds (simple wraparound)
+            if (dove.position.x > 30) dove.position.x = -30;
+            if (dove.position.x < -30) dove.position.x = 30;
+            if (dove.position.z > 30) dove.position.z = -30;
+            if (dove.position.z < -30) dove.position.z = 30;
+            
+            // Gentle turning
+            if (!isFlapping) {
+                dove.rotation.y += Math.sin(time * 0.5) * 0.005;
+            }
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            animateWater();
+            animateDove();
+            
+            // Camera follows dove loosely
+            const targetCameraX = dove.position.x * 0.3;
+            const targetCameraZ = dove.position.z * 0.3 + 10;
+            
+            camera.position.x += (targetCameraX - camera.position.x) * 0.02;
+            camera.position.z += (targetCameraZ - camera.position.z) * 0.02;
+            camera.lookAt(dove.position.x, dove.position.y - 1, dove.position.z);
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
