@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fliegende Taube</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #87CEEB 0%, #4682B4 100%);
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Globale Variablen
+        let scene, camera, renderer;
+        let dove, leftWing, rightWing;
+        let water;
+        let isFlapping = false;
+        let doveSpeed = 0.02;
+        let wingAngle = 0;
+        let waterOffset = 0;
+        
+        // Szene initialisieren
+        function init() {
+            // Szene erstellen
+            scene = new THREE.Scene();
+            
+            // Kamera (Vogelperspektive)
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 15, 20);
+            camera.lookAt(0, 0, 0);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x87CEEB);
+            document.body.appendChild(renderer.domElement);
+            
+            // Beleuchtung
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 20, 10);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            
+            // Wasser erstellen
+            createWater();
+            
+            // Taube erstellen
+            createDove();
+            
+            // Touch-Events
+            setupTouchEvents();
+            
+            // Animation starten
+            animate();
+        }
+        
+        // Wasser mit Wellen erstellen
+        function createWater() {
+            const waterGeometry = new THREE.PlaneGeometry(100, 100, 50, 50);
+            const waterMaterial = new THREE.MeshLambertMaterial({
+                color: 0x0066cc,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            water = new THREE.Mesh(waterGeometry, waterMaterial);
+            water.rotation.x = -Math.PI / 2;
+            water.position.y = -5;
+            scene.add(water);
+        }
+        
+        // Taube erstellen
+        function createDove() {
+            dove = new THREE.Group();
+            
+            // Körper (oval)
+            const bodyGeometry = new THREE.SphereGeometry(1, 16, 12);
+            const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.scale.set(1.5, 0.8, 1);
+            dove.add(body);
+            
+            // Kopf
+            const headGeometry = new THREE.SphereGeometry(0.6, 16, 12);
+            const head = new THREE.Mesh(headGeometry, bodyMaterial);
+            head.position.set(1.2, 0.3, 0);
+            dove.add(head);
+            
+            // Schnabel
+            const beakGeometry = new THREE.ConeGeometry(0.1, 0.4, 8);
+            const beakMaterial = new THREE.MeshLambertMaterial({ color: 0xFFA500 });
+            const beak = new THREE.Mesh(beakGeometry, beakMaterial);
+            beak.position.set(1.8, 0.3, 0);
+            beak.rotation.z = Math.PI / 2;
+            dove.add(beak);
+            
+            // Linker Flügel
+            const wingGeometry = new THREE.PlaneGeometry(2, 1.5);
+            const wingMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+            leftWing.position.set(-0.5, 0, 0.8);
+            leftWing.rotation.y = Math.PI / 4;
+            dove.add(leftWing);
+            
+            // Rechter Flügel
+            rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+            rightWing.position.set(-0.5, 0, -0.8);
+            rightWing.rotation.y = -Math.PI / 4;
+            dove.add(rightWing);
+            
+            // Schwanz
+            const tailGeometry = new THREE.PlaneGeometry(1, 0.8);
+            const tail = new THREE.Mesh(tailGeometry, bodyMaterial);
+            tail.position.set(-1.5, 0, 0);
+            tail.rotation.y = Math.PI / 2;
+            dove.add(tail);
+            
+            dove.position.set(-20, 8, 0);
+            scene.add(dove);
+        }
+        
+        // Touch-Events einrichten
+        function setupTouchEvents() {
+            const canvas = renderer.domElement;
+            
+            canvas.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                isFlapping = true;
+                doveSpeed = 0.08;
+            });
+            
+            canvas.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                isFlapping = false;
+                doveSpeed = 0.02;
+            });
+            
+            canvas.addEventListener('touchcancel', function(e) {
+                e.preventDefault();
+                isFlapping = false;
+                doveSpeed = 0.02;
+            });
+        }
+        
+        // Animation
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Taube bewegen
+            dove.position.x += doveSpeed;
+            if (dove.position.x > 20) {
+                dove.position.x = -20;
+            }
+            
+            // Flügel flattern
+            if (isFlapping) {
+                wingAngle += 0.3;
+                leftWing.rotation.z = Math.sin(wingAngle) * 0.5;
+                rightWing.rotation.z = Math.sin(wingAngle) * 0.5;
+            } else {
+                // Sanftes Gleiten
+                wingAngle += 0.1;
+                leftWing.rotation.z = Math.sin(wingAngle) * 0.1;
+                rightWing.rotation.z = Math.sin(wingAngle) * 0.1;
+            }
+            
+            // Wasser-Wellen animieren
+            waterOffset += 0.02;
+            if (water.geometry.attributes.position) {
+                const positions = water.geometry.attributes.position.array;
+                for (let i = 0; i < positions.length; i += 3) {
+                    const x = positions[i];
+                    const z = positions[i + 2];
+                    positions[i + 1] = Math.sin(x * 0.2 + waterOffset) * 0.3 + 
+                                     Math.sin(z * 0.3 + waterOffset * 0.8) * 0.2;
+                }
+                water.geometry.attributes.position.needsUpdate = true;
+            }
+            
+            // Taube leicht auf und ab schwingen
+            dove.position.y = 8 + Math.sin(Date.now() * 0.002) * 0.5;
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Responsive Design
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        window.addEventListener('resize', onWindowResize);
+        
+        // Start
+        init();
+    </script>
+</body>
+</html>
